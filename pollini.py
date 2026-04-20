@@ -101,8 +101,8 @@ def format_message(dati):
 
     corpo = ""
     for nome, previsioni in dati:
-    if "frassino" not in nome.lower():
-        continue
+        if "frassino" not in nome.lower():
+            continue
         corpo += f"\n🌱 {nome}\n"
         for _, giorno, livello in previsioni:
             emoji_livello = get_emoji(livello)
