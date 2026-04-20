@@ -1,0 +1,28 @@
+name: Pollini Milano - Notifica Giornaliera
+
+on:
+  schedule:
+    # Ogni mattina alle 7:30 ora italiana (05:30 UTC in estate, 06:30 in inverno)
+    - cron: '30 5 * * *'
+  workflow_dispatch:  # permette di avviare manualmente per testare
+
+jobs:
+  pollini:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Installa Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Installa dipendenze
+        run: pip install requests beautifulsoup4
+
+      - name: Esegui script pollini
+        env:
+          NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
+        run: python pollini.py
