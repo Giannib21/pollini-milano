@@ -3,7 +3,8 @@ name: Pollini Milano - Notifica Giornaliera
 on:
   schedule:
     # Ogni mattina alle 7:30 ora italiana (05:30 UTC in estate, 06:30 in inverno)
-    - cron: '30 5 * * *'
+    # Solo febbraio-maggio: stagione fioritura del frassino
+    - cron: '30 5 1-31 2-5 *'
   workflow_dispatch:  # permette di avviare manualmente per testare
 
 jobs:

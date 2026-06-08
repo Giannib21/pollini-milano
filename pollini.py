@@ -5,6 +5,7 @@ from datetime import datetime
 
 # --- CONFIGURAZIONE ---
 NTFY_TOPIC = os.environ.get("NTFY_TOPIC", "pollini-milano")  # il tuo topic ntfy
+MESI_ATTIVI = {2, 3, 4, 5}  # febbraio-maggio: stagione fioritura frassino
 # ----------------------
 
 LIVELLI_EMOJI = {
@@ -15,6 +16,11 @@ LIVELLI_EMOJI = {
     "alto": "🔴",
     "molto alto": "🔴🔴",
 }
+
+def is_stagione_attiva(oggi=None):
+    oggi = oggi or datetime.now()
+    return oggi.month in MESI_ATTIVI
+
 
 def get_emoji(livello):
     livello_lower = livello.strip().lower()
@@ -117,6 +123,10 @@ def send_ntfy(message, topic):
     print(f"Notifica inviata a ntfy.sh/{topic}")
 
 def main():
+    if not is_stagione_attiva():
+        print("Fuori stagione (febbraio-maggio): nessuna notifica inviata.")
+        return
+
     print("Scarico dati pollini...")
     try:
         html = scrape_pollini()
