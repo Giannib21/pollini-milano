@@ -5,9 +5,8 @@ from datetime import datetime
 
 # --- CONFIGURAZIONE ---
 NTFY_TOPIC = os.environ.get("NTFY_TOPIC", "pollini-milano")  # il tuo topic ntfy
+MESI_ATTIVI = {2, 3, 4, 5}  # febbraio-maggio: stagione fioritura frassino
 # ----------------------
-
-GIORNI = ["lunedì", "martedì", "mercoledì", "giovedì", "venerdì", "sabato", "domenica"]
 
 LIVELLI_EMOJI = {
     "assente": "🟢",
@@ -17,6 +16,11 @@ LIVELLI_EMOJI = {
     "alto": "🔴",
     "molto alto": "🔴🔴",
 }
+
+def is_stagione_attiva(oggi=None):
+    oggi = oggi or datetime.now()
+    return oggi.month in MESI_ATTIVI
+
 
 def get_emoji(livello):
     livello_lower = livello.strip().lower()
@@ -37,60 +41,53 @@ def scrape_pollini():
     resp.raise_for_status()
     return resp.text
 
+def _estrai_livello_frassino(day_section):
+    for row in day_section.find_all(
+        "div", class_=lambda c: c and "space-between" in c
+    ):
+        name_tag = row.find("span", class_="ds-body-medium")
+        if not name_tag:
+            continue
+        nome = name_tag.get_text(strip=True).rstrip(":")
+        if nome.lower() != "frassino":
+            continue
+        level_tag = row.find("div", class_=lambda c: c and "tag" in c)
+        if level_tag:
+            return level_tag.get_text(strip=True)
+    return None
+
+
 def parse_pollini(html):
     soup = BeautifulSoup(html, "html.parser")
     risultati = []
 
-    # Trova tutte le righe pianta
-    righe_pianta = soup.find_all("div", class_=lambda c: c and "col-xs-1-4" in c and "col-sm-1-5" in c)
+    day_labels = {}
+    for tab in soup.select("nav.tab-bar a.tab"):
+        href = tab.get("href", "")
+        if href.startswith("#"):
+            day_labels[href[1:]] = tab.get_text(strip=True)
 
-    for riga in righe_pianta:
-        # Nome pianta
-        nome_tag = riga.find("div", class_="col-auto")
-        if not nome_tag:
-            continue
-        nome = nome_tag.get_text(strip=True)
-        if not nome:
-            continue
-
-        # Trova il blocco dati adiacente (stesso row-table padre o fratello)
-        parent = riga.find_parent("div", class_=lambda c: c and "row-table" in c)
-        if not parent:
-            # Prova a salire di livello
-            parent = riga.find_parent()
-
-        # Cerca tutti i div con classe pollineMedia nello stesso contenitore padre
-        dati_container = riga.find_parent()
-        if not dati_container:
+    previsioni = []
+    for day_section in soup.find_all("div", class_="content-day"):
+        day_id = day_section.get("id")
+        if not day_id:
             continue
 
-        celle = dati_container.find_all("div", class_="pollineMedia")
-        if not celle:
+        livello = _estrai_livello_frassino(day_section)
+        if not livello:
             continue
 
-        # Abbina ogni cella al giorno tramite la classe altriDati-<giorno>-<num>
-        previsioni = []
-        for cella in celle:
-            classes = cella.get("class", [])
-            giorno_str = None
-            numero = None
-            for cls in classes:
-                for g in GIORNI:
-                    if cls.startswith(f"altriDati-{g}-"):
-                        giorno_str = g.capitalize()
-                        try:
-                            numero = int(cls.split("-")[-1])
-                        except ValueError:
-                            pass
-                        break
-            livello = cella.get_text(strip=True)
-            if giorno_str and livello:
-                previsioni.append((numero or 0, giorno_str, livello))
+        giorno = day_labels.get(day_id, f"Giorno {day_id}")
+        try:
+            numero = int(day_id)
+        except ValueError:
+            numero = len(previsioni)
 
-        previsioni.sort(key=lambda x: x[0])
+        previsioni.append((numero, giorno, livello))
 
-        if previsioni:
-            risultati.append((nome, previsioni))
+    previsioni.sort(key=lambda x: x[0])
+    if previsioni:
+        risultati.append(("Frassino", previsioni))
 
     return risultati
 
@@ -106,7 +103,7 @@ def format_message(dati):
         corpo += f"\n🌱 {nome}\n"
         for _, giorno, livello in previsioni:
             emoji_livello = get_emoji(livello)
-            corpo += f"  {giorno[:3]}: {emoji_livello}\n"
+            corpo += f"  {giorno}: {emoji_livello}\n"
 
     if not corpo:
         return intestazione + "\n⚠️ Nessun dato trovato. Il sito potrebbe aver cambiato struttura."
@@ -126,6 +123,10 @@ def send_ntfy(message, topic):
     print(f"Notifica inviata a ntfy.sh/{topic}")
 
 def main():
+    if not is_stagione_attiva():
+        print("Fuori stagione (febbraio-maggio): nessuna notifica inviata.")
+        return
+
     print("Scarico dati pollini...")
     try:
         html = scrape_pollini()
